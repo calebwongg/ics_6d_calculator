@@ -1,22 +1,69 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { CATEGORIES, calcCategoryPct, getLetterGrade } from "../data";
 import CategorySection from "./CategorySection";
 
 type AllScores = Record<string, Record<number, string>>;
 
+const STORAGE_KEY = "ics6d-grades";
+
+interface SavedState {
+  scores: AllScores;
+  finalExamScore: string;
+  useFinal: boolean;
+}
+
+function loadFromStorage(): SavedState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as SavedState;
+  } catch {
+    return null;
+  }
+}
+
+function saveToStorage(state: SavedState) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // storage full or unavailable
+  }
+}
+
 export default function GradeCalculator() {
   const [scores, setScores] = useState<AllScores>(() => {
+    const saved = loadFromStorage();
+    if (saved) return saved.scores;
     const init: AllScores = {};
     for (const key of Object.keys(CATEGORIES)) {
       init[key] = {};
     }
     return init;
   });
+  const [finalExamScore, setFinalExamScore] = useState(
+    () => loadFromStorage()?.finalExamScore ?? ""
+  );
+  const [useFinal, setUseFinal] = useState(
+    () => loadFromStorage()?.useFinal ?? false
+  );
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
 
-  const [finalExamScore, setFinalExamScore] = useState("");
-  const [useFinal, setUseFinal] = useState(false);
+  // Auto-save on every change (debounced)
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      saveToStorage({ scores, finalExamScore, useFinal });
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [scores, finalExamScore, useFinal]);
+
+  const handleSave = useCallback(() => {
+    saveToStorage({ scores, finalExamScore, useFinal });
+    setSaveStatus("saved");
+    setTimeout(() => setSaveStatus("idle"), 1500);
+  }, [scores, finalExamScore, useFinal]);
 
   const handleScoreChange = (catKey: string, index: number, value: string) => {
     setScores((prev) => ({
@@ -112,6 +159,19 @@ export default function GradeCalculator() {
           <div className="text-xs text-slate-500 mt-1">
             Estimated Final Grade
           </div>
+        </div>
+
+        {/* Save button */}
+        <div className="flex justify-center mt-4">
+          <button
+            onClick={handleSave}
+            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-sm text-slate-200 rounded-lg transition-colors cursor-pointer"
+          >
+            {saveStatus === "saved" ? "Saved!" : "Save"}
+          </button>
+          <span className="ml-3 text-xs text-slate-500 self-center">
+            Auto-saves as you type
+          </span>
         </div>
       </div>
 
