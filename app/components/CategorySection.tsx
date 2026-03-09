@@ -11,7 +11,7 @@ interface CategorySectionProps {
   categoryPct: number | null;
   finalExamScore?: string;
   useFinal?: boolean;
-  onFinalScoreChange?: (value: string) => void;
+  onFinalScoreChange?: (value: string) => void; //test
   onUseFinalChange?: (checked: boolean) => void;
 }
 
