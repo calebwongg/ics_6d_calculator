@@ -136,7 +136,7 @@ export const CATEGORIES: Record<string, Category> = {
     assignments: [
       { name: "Midterm 1", max: 30 },
       { name: "Midterm 2", max: 26 },
-      { name: "Midterm 3", max: 100, usePercent: true },
+      { name: "Midterm 3", max: 30 },
     ],
   },
   feedback: {
