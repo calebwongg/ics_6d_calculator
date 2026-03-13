@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { CATEGORIES, calcCategoryPct, getLetterGrade } from "../data";
+import { CATEGORIES, calcCategoryPct, calcCategoryPctByPoints, getLetterGrade } from "../data";
 import CategorySection from "./CategorySection";
 
 type AllScores = Record<string, Record<number, string>>;
@@ -38,8 +38,21 @@ export default function GradeCalculator() {
     const saved = loadFromStorage();
     if (saved) return saved.scores;
     const init: AllScores = {};
-    for (const key of Object.keys(CATEGORIES)) {
-      init[key] = {};
+    const skipDefaults = new Set(["exams", "takeHome", "participation"]);
+    for (const [key, cat] of Object.entries(CATEGORIES)) {
+      if (skipDefaults.has(key)) {
+        init[key] = {};
+      } else {
+        const catScores: Record<number, string> = {};
+        cat.assignments.forEach((a, i) => {
+          if (cat.isCheckbox) {
+            catScores[i] = "checked";
+          } else {
+            catScores[i] = String(a.max);
+          }
+        });
+        init[key] = catScores;
+      }
     }
     return init;
   });
@@ -85,25 +98,53 @@ export default function GradeCalculator() {
     return results;
   }, [scores, finalExamScore, useFinal]);
 
-  const { finalGrade, letterGrade } = useMemo(() => {
-    let total = 0;
+  // "By percentage" uses the existing calcCategoryPct (each midterm weighted equally)
+  // "By points" pools all midterm points together
+  const categoryResultsByPoints = useMemo(() => {
+    const results: Record<string, number | null> = {};
     for (const [key, cat] of Object.entries(CATEGORIES)) {
-      const pct = categoryResults[key];
-      if (cat.isCheckbox) {
-        total += (pct ?? 0) * cat.weight;
-      } else if (pct !== null) {
-        total += pct * cat.weight;
+      if (key === "exams") {
+        results[key] = calcCategoryPctByPoints(
+          cat,
+          scores[key] ?? {},
+          finalExamScore,
+          useFinal
+        );
+      } else {
+        results[key] = categoryResults[key];
       }
     }
-    return { finalGrade: total, letterGrade: getLetterGrade(total) };
-  }, [categoryResults]);
+    return results;
+  }, [scores, finalExamScore, useFinal, categoryResults]);
 
-  const gradeColor =
-    finalGrade >= 90
+  const computeTotal = useCallback(
+    (results: Record<string, number | null>) => {
+      let total = 0;
+      for (const [key, cat] of Object.entries(CATEGORIES)) {
+        const pct = results[key];
+        if (cat.isCheckbox) {
+          total += (pct ?? 0) * cat.weight;
+        } else if (pct !== null) {
+          total += pct * cat.weight;
+        }
+      }
+      return total;
+    },
+    []
+  );
+
+  const { gradeByPct, gradeByPoints } = useMemo(() => {
+    const byPct = computeTotal(categoryResults);
+    const byPoints = computeTotal(categoryResultsByPoints);
+    return { gradeByPct: byPct, gradeByPoints: byPoints };
+  }, [categoryResults, categoryResultsByPoints, computeTotal]);
+
+  const getGradeColor = (grade: number) =>
+    grade >= 90
       ? "text-emerald-400"
-      : finalGrade >= 80
+      : grade >= 80
         ? "text-blue-400"
-        : finalGrade >= 70
+        : grade >= 70
           ? "text-amber-400"
           : "text-red-400";
 
@@ -151,14 +192,27 @@ export default function GradeCalculator() {
           })}
         </div>
 
-        <div className="text-center pt-4 border-t border-slate-700">
-          <span className={`text-4xl font-bold ${gradeColor}`}>
-            {finalGrade.toFixed(2)}%
-          </span>
-          <span className="text-xl text-slate-400 ml-2">{letterGrade}</span>
-          <div className="text-xs text-slate-500 mt-1">
-            Estimated Final Grade
+        <div className="pt-4 border-t border-slate-700">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="text-center">
+              <div className="text-xs text-slate-500 mb-1">By Equal Percentage (each midterm = 1/3)</div>
+              <span className={`text-3xl font-bold ${getGradeColor(gradeByPct)}`}>
+                {gradeByPct.toFixed(2)}%
+              </span>
+              <span className="text-lg text-slate-400 ml-2">{getLetterGrade(gradeByPct)}</span>
+            </div>
+            <div className="text-center">
+              <div className="text-xs text-slate-500 mb-1">By Total Points (pooled midterm points)</div>
+              <span className={`text-3xl font-bold ${getGradeColor(gradeByPoints)}`}>
+                {gradeByPoints.toFixed(2)}%
+              </span>
+              <span className="text-lg text-slate-400 ml-2">{getLetterGrade(gradeByPoints)}</span>
+            </div>
           </div>
+          <p className="text-xs text-amber-400/80 text-center mt-3">
+            Disclaimer: These are estimates. It is unclear whether the instructor calculates midterm grades
+            by pooling total points or by weighting each midterm equally. Both methods are shown above.
+          </p>
         </div>
 
         {/* Save button */}

@@ -240,3 +240,42 @@ export function calcCategoryPct(
   });
   return count > 0 ? sum / count : null;
 }
+
+/**
+ * Calculates a category's percentage by pooling raw points
+ * (sum of earned / sum of possible) instead of averaging percentages.
+ * Only meaningful for categories with raw-point assignments (like midterms).
+ */
+export function calcCategoryPctByPoints(
+  cat: Category,
+  scores: Record<number, string>,
+  finalExamScore?: string,
+  useFinal?: boolean
+): number | null {
+  let totalEarned = 0;
+  let totalPossible = 0;
+  let filledCount = 0;
+
+  cat.assignments.forEach((a, i) => {
+    const val = parseFloat(scores[i] ?? "");
+    if (scores[i] === "" || scores[i] === undefined || isNaN(val)) return;
+    filledCount++;
+    totalEarned += val;
+    totalPossible += a.max;
+  });
+
+  if (filledCount === 0) return null;
+
+  const pooledPct = totalPossible > 0 ? totalEarned / totalPossible : 0;
+
+  // Final exam replacement
+  if (cat.hasFinalReplacement && useFinal && finalExamScore) {
+    const finalVal = parseFloat(finalExamScore);
+    if (!isNaN(finalVal)) {
+      const finalPct = finalVal / 100;
+      if (finalPct > pooledPct) return finalPct;
+    }
+  }
+
+  return pooledPct;
+}
